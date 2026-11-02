@@ -1,0 +1,8 @@
+name = "pos-image-upload"
+main = "upload-worker.js"
+compatibility_date = "2024-09-01"
+
+# Bind the R2 bucket created in step 3 of README.md
+[[r2_buckets]]
+binding = "PRODUCT_IMAGES"
+bucket_name = "pos-product-images"
