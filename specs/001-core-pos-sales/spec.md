@@ -4,25 +4,31 @@
 
 **Created**: 2026-10-30
 
-**Status**: Draft
+**Status**: Revision 2 (2026-11-04) — MVP pivot: local-only storage (IndexedDB), no backend/sign-in
 
 **Input**: User description: "Build the core sales app: Burmese login with fixed credentials, product grid with images and MMK prices, 1–2 word search, cart with running total, checkout summary with print button, offline support."
 
+> **MVP pivot note (2026-11-04)**: The shop's internet provider blocks the Supabase
+> endpoints, so the cloud backend (Supabase DB/Auth/Storage) is deferred. The MVP is
+> a React + Capacitor Android app that stores products and sales entirely in device
+> IndexedDB. Login is dropped for the MVP (single shared device). A backend plus
+> once-only sync returns in a later revision.
+
 ## User Scenarios & Testing *(mandatory)*
 
-### User Story 1 - Login with fixed credentials (Priority: P1)
+### User Story 1 - Open the app and start selling (Priority: P1) *(revised by MVP pivot)*
 
-A salesperson opens the app on a shop tablet and signs in with his/her assigned username and password (fixed accounts created by the shop). After signing in once, the salesperson can keep selling even if internet connection is lost.
+A salesperson unlocks the shop tablet and opens the app. There is no sign-in step in the MVP: the device itself is trusted, and all data lives on the device. The sale screen appears immediately and works with or without any internet connection.
 
-**Why this priority**: Nothing else in the app is accessible until someone is signed in; this is the front door of the product.
+**Why this priority**: The front door of the product; any friction here blocks every other story.
 
-**Independent Test**: Can be fully tested by launching the app, entering valid credentials, and reaching the sale screen; delivering "only authorized staff can sell".
+**Independent Test**: Can be fully tested by launching the app and reaching the sale screen instantly; delivering "anyone at the counter can sell".
 
 **Acceptance Scenarios**:
 
-1. **Given** the app is open, **When** a salesperson enters a correct username and password, **Then** the sale screen appears and stays signed in across app restarts.
-2. **Given** the app is open, **When** a wrong password is entered 3 times, **Then** a large Burmese error message is shown and access is denied.
-3. **Given** the device is offline, **When** a signed-in salesperson reopens the app, **Then** the sale screen still opens without requiring a new sign-in.
+1. **Given** the app is installed, **When** it is opened, **Then** the sale screen appears immediately with no sign-in step.
+2. **Given** the device has no internet at all, **When** the app is opened, **Then** the sale screen still opens and selling works.
+3. **Given** the app was closed and reopened, **When** the salesperson returns, **Then** the catalog and previous local data are still there (stored on-device).
 
 ---
 
@@ -92,19 +98,19 @@ A salesperson can add a new product when a customer asks for something not yet i
 
 ---
 
-### User Story 6 - Sync offline sales when back online (Priority: P2)
+### User Story 6 - Sales survive restarts and are recorded exactly once (Priority: P2) *(revised by MVP pivot)*
 
-Sales recorded while offline are uploaded automatically when connectivity returns, without duplicates or data loss. The salesperson sees a small Burmese indicator of offline/pending count of unpushed sales.
+Every confirmed sale — including sales confirmed while completely offline — is written immediately to the device's local database. Reopening the app never loses or duplicates sales, and the idempotency key on each sale guarantees a retried confirmation cannot create a second record. Cloud upload is deferred to a later revision.
 
-**Why this priority**: Protects revenue records in the shop's environment where connectivity is unreliable.
+**Why this priority**: Protects revenue records in the shop's environment where connectivity is unreliable or absent.
 
-**Independent Test**: Can be fully tested by selling offline, reconnecting, and verifying the sale appears in the records exactly once.
+**Independent Test**: Can be fully tested by confirming sales (also in airplane mode), force-closing the app, reopening, and verifying every sale appears exactly once.
 
 **Acceptance Scenarios**:
 
-1. **Given** offline sales exist, **When** connectivity is restored, **Then** all pending sales upload automatically and the indicator clears.
-2. **Given** an offline sale already uploaded, **When** connectivity drops again before the indicator clears, **Then** the sale is not uploaded a second time.
-3. **Given** an upload fails mid-transfer, **When** the app retries, **Then** no sale record is lost or duplicated.
+1. **Given** a sale has been confirmed, **When** the app is closed and reopened, **Then** the sale still appears in the local history exactly once.
+2. **Given** a confirmation is retried on the same sale (same idempotency key), **When** it is written again, **Then** no second copy of the sale is created.
+3. **Given** the device is offline throughout, **When** sales are confirmed, **Then** they are all stored locally with no network involved.
 
 ---
 
@@ -115,7 +121,7 @@ Sales recorded while offline are uploaded automatically when connectivity return
 - Very large quantity or very large total: guarded (no negative or absurd totals), long numbers stay readable and cannot overflow the display.
 - Zero-item cart print/confirm: disabled to prevent empty receipts or empty sales.
 - Accidental cart clear: asks for confirmation with big Burmese buttons; the order survives an app reload.
-- Network failure mid-confirmation: nothing is half-saved; retry happens automatically without losing or duplicating the sale.
+- Network failure mid-confirmation: nothing is half-saved; the confirm is a single local IndexedDB write (all-or-nothing by store transaction), and the idempotency key prevents duplicates on retry.
 - Session ends while selling: the current order is kept; re-authentication is requested at the next sensible point rather than losing the sale.
 - Oversized or wrong-format photo upload: rejected with a large Burmese explanation before saving.
 - Slow search: results appear near-instantly from locally stored catalog data even while the network is slow.
@@ -124,30 +130,30 @@ Sales recorded while offline are uploaded automatically when connectivity return
 
 ### Functional Requirements
 
-- **FR-001**: The app MUST restrict access to selling features to authenticated sales staff using fixed, pre-registered credentials.
-- **FR-002**: The app MUST keep a signed-in salesperson signed in until they sign out, including across app restarts, and MUST permit sale-screen use without connectivity once signed in.
+- **FR-001**: The MVP MUST be directly usable on the shared shop device without any sign-in; only authorized physical access to the device protects the data (device-trust model).
+- **FR-002**: The app MUST be fully functional with zero connectivity — opening, browsing, searching, adding products, confirming sales, and printing all work offline.
 - **FR-003**: The sale screen MUST display products as tappable cards, each showing the product image and price in MMK, with touch targets large enough for older staff.
 - **FR-004**: The app MUST show a running order total in MMK, updated immediately after every product tap, quantity change, or removal.
 - **FR-005**: Tapping a product already in the order MUST increase its quantity instead of creating a duplicate order line.
 - **FR-006**: The sale screen MUST provide search that matches products from a 1–2 word fragment of the product name and returns results fast enough to feel instant.
 - **FR-007**: The search with no results MUST show a Burmese empty state including a shortcut to add a new product.
-- **FR-008**: The product catalog and product images MUST be available locally on the device so browsing and search work while offline.
+- **FR-008**: The product catalog and product images MUST be stored locally on the device in IndexedDB so browsing and search work while offline and persist across restarts.
 - **FR-009**: The order summary MUST list all items with name, quantity controls, per-item removal, line amounts, and a prominent total.
-- **FR-010**: Confirming an order MUST record a complete sale of the item list and total; orders confirmed while offline MUST be stored locally and uploaded automatically when back online, exactly once.
+- **FR-010**: Confirming an order MUST record a complete sale of the item list and total as one local record in IndexedDB, keyed by an idempotency key so the same sale can never be recorded twice. (Cloud upload is deferred; see MVP pivot note.)
 - **FR-011**: The order summary MUST include a print action that produces a receipt with the item list and total, designed so a future Bluetooth printer can replace the receipt channel without changing the user flow.
 - **FR-012**: Print and confirm MUST be unavailable while the order is empty.
 - **FR-013**: The app MUST allow a signed-in salesperson to add a new product with a name, price in MMK, and photo captured from camera or device gallery, subject to price validation and image format/size checks.
 - **FR-014**: All user-visible text MUST be in Burmese, readable for low-literacy and older users; critical actions MUST rely on icon + color + image in addition to text.
-- **FR-015**: The app MUST show a small, always-visible Burmese connectivity state (offline / pending sales count) on the sale screen.
+- **FR-015**: All sale and product data MUST live on the device; the app MUST NOT hard-require any network resource. A passive connectivity indicator is optional and purely informational.
 - **FR-016**: The current order and offline-sale queue MUST survive an app restart.
 
 ### Key Entities *(include if feature involves data)*
 
-- **Product**: a sellable item — name, price in MMK, photo, active status, creator. Referenced by orders; searchable by name fragments.
-- **Sale**: one completed transaction — grand total in MMK, who completed it, when it happened and when it reached central storage, and a local uniqueness marker that prevents duplicate uploads.
+- **Product**: a sellable item — name, price in MMK, photo (stored inline as a compressed data URL on Android/local storage), active status, creator. Referenced by orders; searchable by name fragments.
+- **Sale**: one completed transaction — grand total in MMK, who completed it, when it happened, and a local uniqueness (idempotency) key that prevents duplicate records.
 - **Sale line**: one row inside a sale — product reference plus snapshot of name, unit price, quantity, and line amount (so history stays correct even if the product changes later).
-- **Staff account**: fixed credential holder — username/name, role, active flag; only active accounts can sign in.
-- **Pending offline record**: a locally stored sale (or product) waiting to be synced, including its upload state to guarantee once-only delivery.
+- **Staff account**: *deferred* — sign-in and roles return with the backend revision.
+- **Pending offline record**: *not needed in MVP* — sales are written locally as final records; the sync queue returns with cloud upload.
 
 ## Success Criteria *(mandatory)*
 
@@ -163,12 +169,14 @@ Sales recorded while offline are uploaded automatically when connectivity return
 
 ## Assumptions
 
-- Products and their photos are managed centrally by the shop; photos are optimized/proportioned consistently; hundreds—not tens of thousands—of products.
-- One staff account per salesperson; fixed credentials (no self-registration); role model covers "sale" and "admin" (admin features are scoped in a later specification).
-- The device is a shared shop tablet; orders are per-device, one active order at a time.
+- **MVP storage**: everything (products, photos, sales) lives in device IndexedDB; "hundreds—not tens of thousands—of products" and shop-scale sales volume fit comfortably.
+- **No backend in MVP**: the previous Supabase plan is deferred because the shop's provider blocks those endpoints; a backend + once-only sync can be added later without changing the UI contract.
+- **No sign-in in MVP**: the tablet is a trusted shared device inside the shop; anyone holding it can sell (US1 revised accordingly).
+- **Target platform: Android via Capacitor** — the React web app is wrapped as an Android APK by Capacitor; a browser/PWA build also works for desktop support.
+- One active order per device at a time.
 - Currency is MMK only; standard thousands-separator formatting is acceptable (no Burmese digit requirement in v1).
 - Printing v1: produce a printable summary on the device (system print). Bluetooth printer integration is a later plug-in.
 - No inventory/stock tracking; no discounts/promotions in this version.
-- Reasonable data retention: sales history kept indefinitely.
+- Reasonable data retention: sales history kept locally and kept indefinitely (device-size dependent).
 
-**Out of scope**: admin dashboards/reports and admin product management (separate specification), Bluetooth printer hardware integration, multi-currency, discounts, stock management.
+**Out of scope**: cloud backend/sync and sign-in with roles (deferred — see MVP pivot note), Bluetooth printer hardware integration, multi-currency, discounts, stock management.

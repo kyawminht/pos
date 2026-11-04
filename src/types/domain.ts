@@ -1,13 +1,4 @@
-export type Role = 'sale' | 'admin'
-
-export interface UserSession {
-  userId: string
-  username: string
-  fullName: string
-  role: Role
-}
-
-/** Partner-facing product record (camelCase). `price >= 1` enforced by DB + UI. */
+/** Partner-facing product record (camelCase). `price >= 1` enforced by UI. */
 export interface Product {
   id: string
   name: string
@@ -72,16 +63,12 @@ export interface PendingSaleRecord {
   syncedAt: string | null
 }
 
-/** Product row shape straight from Supabase (snake_case). */
-export interface ProductRow {
-  id: string
-  name: string
-  price_mmk: number
-  image_url: string | null
-  is_active: boolean
-  created_by: string | null
-  created_at: string
-  updated_at: string
+/** Local IndexedDB row shape (camelCase) removed; products are stored as-is. */
+export interface ProductPatch {
+  name?: string
+  priceMmk?: number
+  imageUrl?: string | null
+  isActive?: boolean
 }
 
 // ---------------------------------------------------------------------------

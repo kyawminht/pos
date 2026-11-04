@@ -1,50 +1,48 @@
-# React + TypeScript + Vite
+# POS for Construction Shop
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Offline-first Burmese (Myanmar-language) point-of-sale app for a construction materials shop. React + TypeScript + Vite + MUI, wrapped for **Android by Capacitor**.
 
-Currently, two official plugins are available:
+**MVP storage model (2026-11-04)**: there is *no cloud backend*. The shop's internet provider blocks the Supabase endpoints, so all product and sales data lives in **device IndexedDB** (`pos-offline` database) and the app works with zero connectivity. Login is deferred (trusted shared device).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Features
 
-## Expanding the ESLint configuration
+- Big-tap product grid with photos and MMK prices; 1–2 word Burmese-aware search
+- Cart with running total; quantity merge; survives app reload
+- Order summary → confirm (saved locally, idempotent — no duplicate sales) → receipt print (`window.print`, Bluetooth printer stub ready)
+- Add products with on-device photo compression (≤1024px JPEG, stored inline)
+- Admin area: daily/weekly/monthly reports computed from local sales + product management
+- All UI text in Burmese (`src/data/labels.mm.ts`)
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
+## Development
 
-- Configure the top-level `parserOptions` property like this:
-
-```js
-export default tseslint.config({
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+```bash
+npm install
+npm run dev        # web dev server (data stored in the browser's IndexedDB)
+npm test           # vitest (fake-indexeddb shim for jsdom)
+npm run build      # tsc + vite build → dist/
+npm run lint
 ```
 
-- Replace `tseslint.configs.recommended` to `tseslint.configs.recommendedTypeChecked` or `tseslint.configs.strictTypeChecked`
-- Optionally add `...tseslint.configs.stylisticTypeChecked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and update the config:
+## Android (Capacitor)
 
-```js
-// eslint.config.js
-import react from 'eslint-plugin-react'
-
-export default tseslint.config({
-  // Set the react version
-  settings: { react: { version: '18.3' } },
-  plugins: {
-    // Add the react plugin
-    react,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended rules
-    ...react.configs.recommended.rules,
-    ...react.configs['jsx-runtime'].rules,
-  },
-})
+```bash
+npm run cap:sync        # build web assets and sync into android/
+npx cap run android     # run on a connected device/emulator
+npm run cap:android     # open the project in Android Studio → Build APK
 ```
+
+The Android WebView's IndexedDB persists all data across restarts; no internet required.
+
+## Project layout (key paths)
+
+- `src/db/offlineStore.ts` — IndexedDB opener + `kv` / `products` / `sales` stores
+- `src/services/productService.ts` — catalog CRUD (IndexedDB)
+- `src/services/saleService.ts` — confirm sale → idempotent local write
+- `src/services/reportsService.ts` — period aggregates over local sales (Asia/Yangon day buckets)
+- `src/services/printerService.ts` — printer abstraction (Web print now, Bluetooth ESC/POS stub)
+- `capacitor.config.ts` — Capacitor config (`mm.shopsale.pos`, `webDir: dist`)
+- `specs/` — feature specs, plans, data models, contracts, quickstarts (see `specs/001-core-pos-sales/plan.md` for the full MVP pivot story)
+
+## Deferred (backend revision)
+
+Supabase (blocked by the local provider) + auth/sign-in with roles, cloud sync of sales/products, Bluetooth printer integration.

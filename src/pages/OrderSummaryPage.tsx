@@ -14,8 +14,6 @@ import { ConfirmDialog } from '../components/ConfirmDialog'
 import { ImageTile } from '../components/ImageTile'
 import { confirmSale } from '../services/saleService'
 import { buildReceipt, printReceipt } from '../services/printerService'
-import { getSession } from '../services/authService'
-import { useSyncQueue } from '../hooks/useSyncQueue'
 import type { Sale } from '../types/domain'
 import type { JSX } from 'react'
 
@@ -25,23 +23,22 @@ export function OrderSummaryPage(): JSX.Element {
   const setQty = useCartStore((s) => s.setQty)
   const removeItem = useCartStore((s) => s.removeItem)
   const clear = useCartStore((s) => s.clear)
-  const { isOnline, pendingCount, refresh: refreshPending } = useSyncQueue()
 
   const [busy, setBusy] = useState(false)
   const [snack, setSnack] = useState<string | null>(null)
   const [confirmDialog, setConfirmDialog] = useState<null | 'clear' | 'confirm'>(null)
+  const [lastSnack, setLastSnack] = useState<'success' | 'error'>('success')
 
   const total = calcCartTotal(items)
   const isEmpty = items.length === 0
 
   const doConfirm = async () => {
     setConfirmDialog(null)
-    const session = await getSession()
     const sale: Sale = {
       idempotencyKey: randomUUID(),
       totalMmk: total,
-      completedBy: session?.userId ?? 'unknown-device-user',
-      completedByName: session?.fullName ?? LABELS.appName,
+      completedBy: 'local-device',
+      completedByName: LABELS.appName,
       createdAt: new Date().toISOString(),
       items: items.map((i) => ({
         productId: i.productId,
@@ -54,12 +51,13 @@ export function OrderSummaryPage(): JSX.Element {
     }
     setBusy(true)
     try {
-      const result = await confirmSale(sale, isOnline)
-      setSnack(result.offline ? LABELS.saleQueuedOffline : LABELS.saleSuccess)
-      if (result.offline) refreshPending()
+      await confirmSale(sale)
+      setLastSnack('success')
+      setSnack(LABELS.saleSuccess)
       clear()
       setTimeout(() => navigate('/', { replace: true }), 1400)
     } catch (e) {
+      setLastSnack('error')
       setSnack(LABELS.errCodeLabel((e as { code?: string }).code ?? 'UNKNOWN'))
     } finally {
       setBusy(false)
@@ -80,17 +78,6 @@ export function OrderSummaryPage(): JSX.Element {
           <Typography noWrap sx={{ fontSize: 17, fontWeight: 700, mr: 'auto' }}>
             {LABELS.orderSummary}
           </Typography>
-          <Typography
-            variant="caption"
-            sx={{
-              display: { xs: 'none', sm: 'block' },
-              color: isOnline ? 'text.secondary' : 'warning.dark',
-              fontWeight: 600,
-              flexShrink: 0,
-            }}
-          >
-            {isOnline ? LABELS.online : LABELS.offline}
-          </Typography>
         </Container>
       </Box>
 
@@ -100,7 +87,7 @@ export function OrderSummaryPage(): JSX.Element {
         onClose={() => setSnack(null)}
         anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
       >
-        <Alert severity={snack === LABELS.saleSuccess || snack === LABELS.saleQueuedOffline ? 'success' : 'error'} sx={{ boxShadow: 3 }}>
+        <Alert severity={lastSnack === 'success' ? 'success' : 'error'} sx={{ boxShadow: 3 }}>
           {snack}
         </Alert>
       </Snackbar>
@@ -242,12 +229,6 @@ export function OrderSummaryPage(): JSX.Element {
                 <Button fullWidth variant="text" color="error" onClick={() => setConfirmDialog('clear')} disabled={busy} data-testid="clear-cart" sx={{ fontSize: 13.5 }}>
                   {LABELS.clearCart}
                 </Button>
-
-                {pendingCount > 0 && (
-                  <Typography variant="caption" sx={{ display: 'block', mt: 2, color: 'warning.dark', fontWeight: 600 }}>
-                    {LABELS.pendingSalesCount(pendingCount)}
-                  </Typography>
-                )}
               </Box>
             </Card>
           </Box>

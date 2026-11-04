@@ -1,38 +1,21 @@
-# Contract: Products API (Supabase, consumed via productService)
+# Contract: Products API (local IndexedDB, consumed via productService)
 
-All access from the app goes through `productService.ts`, which wraps `supabase-js`. Contracts are the stable signatures the app (and future admin app) depends on.
+*MVP pivot (2026-11-04): Supabase Storage/DB removed — all access goes through `productService.ts` against the IndexedDB `products` store. Signatures the UI depends on are unchanged.*
 
-```ts
-type Product = {
-  id: string;              // uuid
-  name: string;            // Burmese
-  priceMmk: number;        // integer >= 1
-  imageUrl: string | null; // Storage public URL or null
-  isActive: boolean;
-  createdBy: string | null;
-  createdAt: string; updatedAt: string;
-};
-```
+## Operations (async, all local)
 
-## Operations
+| Function | Contract |
+|---|---|
+| `listActive(): Promise<Product[]>` | active products, newest `updatedAt` first |
+| `listAllProducts(): Promise<Product[]>` | all products (admin), newest first |
+| `createProduct(input {name, priceMmk, imageFile})` | client compresses image first (≤1024px, JPEG 0.8) → embedded as **data URL** on the record (no external storage). Errors: `NAME_REQUIRED`, `PRICE_INVALID`, `IMAGE_UNREADABLE` |
+| `updateProduct(id, patch {name?, priceMmk?, imageUrl?, isActive?})` | full patch update; bumps `updatedAt`. Errors: `NAME_REQUIRED`, `PRICE_INVALID` |
+| `setActive(id, isActive)` | alias of `updateProduct` |
+| `updateProductPrice(id, priceMmk)` | quick price edit; errors `PRICE_INVALID` |
+| `uploadProductImage(file): Promise<string>` | compressed file → inline data URL |
+| `searchLocal(products, query)` / `normalizeBurmese(s)` | pure client-side search: strip Burmese combining marks, split query; **every word must be found** in the product name |
 
-| Signature | Mode | Notes |
-|---|---|---|
-| `listActive(): Promise<Product[]>` | online | `select * from products where is_active order by updated_at desc` |
-| `searchLocal(query: string): Product[]` | offline | client-side filter over cached list; normalized substring + Burmese-combining-strip (data-model R5) |
-| `create(input: {name, priceMmk, imageFile})` | online required | client compresses image first (≤1024px, JPEG 0.8) → **Supabase Storage** bucket `products` (`products/{uuid}.jpg`) → insert row with `image_url`, `created_by = session.userId` |
-| `subscribeChanges(cb): () => void` | online | realtime notify for catalog refresh; app triggers silent background refetch, never blocks UI |
-
-## Error semantics (mapped to Burmese UI copy)
-- `PRICE_INVALID` — price ≤ 0 / non-integer
-- `NAME_REQUIRED`
-- `IMAGE_UNREADABLE` / `IMAGE_TOO_LARGE` (post-compression safeguard >2.5MB)
-- `NETWORK_ERROR` — thrown for create; callers keep form data intact
-- `PERMISSION_DENIED` — inactive profile
-
-## Caching key contract (TanStack Query)
-- `['products','active']` — persisted to IndexedDB (staleTime 24h, background refetch on focus/online)
-- `['product','image', imageUrl]` — not cached by TanStack; relies on browser HTTP cache
-
-Source of truth: `contracts/schema.sql`. Any change to columns → bump both files in same PR.
-Images: canonical store is **Supabase Storage** bucket `products` (DB holds `image_url` text only — never bytes). `cloudflare/` is a documented OPTIONAL alternative path for larger photo volumes.
+## Storage rules
+- Catalog lives entirely in IndexedDB `products` store keyed by `id`.
+- Images: canonical storage is the inline compressed data URL on the product record; broken/missing renders placeholder. No storage quota beyond IndexedDB (~hundreds of products safe).
+- No network at any point; TanStack Query (`['products']` keys) serves the UI, persisted via the IndexedDB kv `query-cache`.

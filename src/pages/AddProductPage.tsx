@@ -5,7 +5,6 @@ import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { LABELS } from '../data/labels.mm'
 import { createProduct } from '../services/productService'
-import { getSession } from '../services/authService'
 import { compressImage } from '../utils/imageUtils'
 import type { JSX } from 'react'
 
@@ -49,12 +48,10 @@ export function AddProductPage(): JSX.Element {
     setError(null)
     try {
       const compressed = imageFile ? await compressImage(imageFile) : null
-      const session = await getSession()
       await createProduct({
         name: name.trim(),
         priceMmk: price,
         imageFile: compressed,
-        createdBy: session?.userId ?? null,
       })
       await queryClient.invalidateQueries({ queryKey: ['products'] })
       setBanner(LABELS.productSaved)

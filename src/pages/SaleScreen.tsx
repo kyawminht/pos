@@ -24,7 +24,7 @@ import { ImageTile } from '../components/ImageTile'
 import { CartButton } from '../components/CartButton'
 import { EmptyResults } from '../components/EmptyResults'
 import { PriceEditDialog } from '../components/PriceEditDialog'
-import { useSyncQueue } from '../hooks/useSyncQueue'
+import { useNetworkStatus } from '../hooks/useNetworkStatus'
 import type { Product } from '../types/domain'
 import type { JSX } from 'react'
 
@@ -41,7 +41,7 @@ export function SaleScreen(): JSX.Element {
     return m
   }, [cartItems])
 
-  const { isOnline, pendingCount } = useSyncQueue()
+  const { isOnline } = useNetworkStatus()
 
   const { data: products = [], isPending, isError, refetch } = useQuery<Product[]>({
     queryKey: ['products', 'active'],
@@ -71,11 +71,6 @@ export function SaleScreen(): JSX.Element {
               {!isOnline && (
                 <Typography sx={{ fontSize: 13, fontWeight: 600, color: 'warning.dark' }} data-testid="offline-chip">
                   {LABELS.offline}
-                </Typography>
-              )}
-              {isOnline && pendingCount > 0 && (
-                <Typography sx={{ fontSize: 13, fontWeight: 600, color: 'secondary.main' }} data-testid="pending-chip">
-                  {LABELS.pendingSalesCount(pendingCount)}
                 </Typography>
               )}
             </Box>

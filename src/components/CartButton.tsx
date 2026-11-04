@@ -1,7 +1,6 @@
 import { Box, Button, Typography } from '@mui/material'
 import ShoppingCartRounded from '@mui/icons-material/ShoppingCartRounded'
 import { useNavigate } from 'react-router-dom'
-import { LABELS } from '../data/labels.mm'
 import { fmtMMK } from '../utils/mmk'
 import { useCartStore } from '../state/useCartStore'
 
@@ -30,9 +29,6 @@ export function CartButton({ offlineChip }: { offlineChip?: React.ReactNode }) {
       >
         {offlineChip && <Box sx={{ mr: 'auto' }}>{offlineChip}</Box>}
         <Box sx={{ mr: 'auto', minWidth: 0 }}>
-          <Typography variant="caption" sx={{ display: 'block', lineHeight: 1.2 }}>
-            {LABELS.selected} · {itemCount} {LABELS.items}
-          </Typography>
           <Typography noWrap sx={{ fontSize: 20, fontWeight: 700, lineHeight: 1.25 }} data-testid="cart-total">
             {fmtMMK(total)}
           </Typography>
@@ -43,10 +39,10 @@ export function CartButton({ offlineChip }: { offlineChip?: React.ReactNode }) {
           disabled={itemCount === 0}
           onClick={() => navigate('/order')}
           data-testid="cart-view-order"
-          startIcon={<ShoppingCartRounded />}
-          sx={{ flexShrink: 0, minWidth: 180 }}
+          aria-label="cart"
+          sx={{ flexShrink: 0, minWidth: 56, px: 2 }}
         >
-          {LABELS.viewOrder}
+          <ShoppingCartRounded />
         </Button>
       </Box>
     </Box>

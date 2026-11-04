@@ -4,7 +4,7 @@
  */
 export const LABELS = {
   appName: 'ဆိုင်ရောင်းခြင်းစနစ်',
-  shopName: 'ဆောက်လုပ်ရေး ကုန်ဆိုင်',
+  shopName: 'ကြယ်စင်စကြာ',
 
   // Login
   loginTitle: 'အကောင့်ထဲ ဝင်ရောက်ရန်',

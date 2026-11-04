@@ -8,7 +8,7 @@ import { fmtMMK } from '../utils/mmk'
 import { rangeFor, fmtDate } from '../hooks/usePeriod'
 import { salesInPeriod, salesKey, SALES_PAGE_SIZE } from '../services/reportsService'
 import { FreshnessBadge } from '../components/FreshnessBadge'
-import { useSyncQueue } from '../hooks/useSyncQueue'
+import { useNetworkStatus } from '../hooks/useNetworkStatus'
 import type { JSX } from 'react'
 
 function fmtDateTime(iso: string): string {
@@ -22,7 +22,7 @@ export function AdminSalesListPage(): JSX.Element {
   const fallback = useMemo(() => rangeFor('day'), [])
   const from = params.get('from') ?? fallback.from
   const to = params.get('to') ?? fallback.to
-  const { isOnline } = useSyncQueue()
+  const { isOnline } = useNetworkStatus()
 
   const { data, isPending, isError, fetchNextPage, hasNextPage, isFetchingNextPage, dataUpdatedAt } = useInfiniteQuery({
     queryKey: salesKey(from, to, -1),

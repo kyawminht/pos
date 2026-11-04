@@ -5,9 +5,7 @@ import CloseRounded from '@mui/icons-material/CloseRounded'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { LABELS } from '../data/labels.mm'
 import { visibleNav } from './navConfig'
-import { useSession } from '../hooks/useSession'
-import { logout } from '../services/authService'
-import { useSyncQueue } from '../hooks/useSyncQueue'
+import { useNetworkStatus } from '../hooks/useNetworkStatus'
 import PointOfSaleRounded from '@mui/icons-material/PointOfSaleRounded'
 import BarChartRounded from '@mui/icons-material/BarChartRounded'
 import Inventory2Rounded from '@mui/icons-material/Inventory2Rounded'
@@ -15,27 +13,19 @@ import type { SvgIconComponent } from '@mui/icons-material'
 
 /**
  * Shared application shell (research R8): left sidebar on md+,
- * bottom navigation on phones. Sale + admin screens render inside it.
+ * bottom/top navigation on phones. Sale + admin screens render inside it.
+ * MVP: no session/sign-out — the device owns its local data.
  */
 export function AppShell({ children }: { children: ReactNode }): JSX.Element {
-  const session = useSession()
   const navigate = useNavigate()
   const location = useLocation()
-  const { isOnline, pendingCount } = useSyncQueue()
+  const { isOnline } = useNetworkStatus()
   const [menuOpen, setMenuOpen] = useState(false)
 
-  const role = session && session !== 'loading' ? session.role : 'sale'
-  const items = visibleNav(role)
+  const items = visibleNav()
   const isActive = (to: string) => (to === '/' ? location.pathname === '/' : location.pathname.startsWith(to))
   const iconFor = (to: string): SvgIconComponent =>
     to === '/' ? PointOfSaleRounded : to === '/admin' ? BarChartRounded : Inventory2Rounded
-
-  const onSignOut = async () => {
-    await logout()
-    navigate('/login', { replace: true })
-  }
-
-  const accountName = session && session !== 'loading' ? session.fullName || session.username : ''
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
@@ -86,16 +76,9 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
         </Box>
 
         <Box sx={{ px: 2, py: 2, borderTop: '1px solid', borderColor: 'divider' }}>
-          <Typography noWrap sx={{ fontSize: 13, fontWeight: 600 }}>
-            {accountName}
-          </Typography>
-          <Typography variant="caption" sx={{ display: 'block', mb: 1 }}>
+          <Typography variant="caption" sx={{ display: 'block' }}>
             {isOnline ? LABELS.online : LABELS.offline}
-            {pendingCount > 0 ? ` · ${LABELS.pendingThisDevice(pendingCount)}` : ''}
           </Typography>
-          <Button variant="outlined" size="small" fullWidth onClick={onSignOut} sx={{ fontSize: 12.5 }}>
-            {LABELS.signOut}
-          </Button>
         </Box>
       </Box>
 
@@ -130,11 +113,6 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
           <Typography noWrap sx={{ fontSize: 14, fontWeight: 700 }}>
             {LABELS.shopName}
           </Typography>
-          {pendingCount > 0 && (
-            <Typography variant="caption" sx={{ ml: 'auto', color: 'warning.dark', fontWeight: 600 }}>
-              {LABELS.pendingThisDevice(pendingCount)}
-            </Typography>
-          )}
         </Box>
 
         {children}
@@ -178,24 +156,7 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
         </Box>
         <Divider sx={{ mt: 'auto' }} />
         <Box sx={{ p: 2 }}>
-          <Typography noWrap sx={{ fontSize: 13, fontWeight: 600 }}>
-            {accountName}
-          </Typography>
-          <Typography variant="caption" sx={{ display: 'block', mb: 1.5 }}>
-            {isOnline ? LABELS.online : LABELS.offline}
-          </Typography>
-          <Button
-            variant="outlined"
-            size="small"
-            fullWidth
-            onClick={async () => {
-              setMenuOpen(false)
-              await onSignOut()
-            }}
-            sx={{ fontSize: 13, color: 'error.main', borderColor: '#f3c7c3' }}
-          >
-            {LABELS.signOut}
-          </Button>
+          <Typography variant="caption">{isOnline ? LABELS.online : LABELS.offline}</Typography>
         </Box>
       </Drawer>
 

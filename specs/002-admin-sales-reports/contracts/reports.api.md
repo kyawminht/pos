@@ -1,48 +1,44 @@
-# Contract: Reports RPCs (consumed by `reportsService`)
+# Contract: Reports (consumed by `reportsService`)
 
-Source of truth: `contracts/reports.sql` → `supabase/migrations/0002_admin_reports.sql`.
+*MVP pivot (2026-11-04): the former Supabase RPC contract is now an in-memory aggregation over the device-local IndexedDB `sales` store (see `src/services/reportsService.ts`). The export shapes and query keys below are unchanged — only the source moved.*
 
-All RPCs require an active admin (except `sale_detail`, which also allows the sale owner) and raise `FORBIDDEN` otherwise.
-
-## report_period
+## reportPeriod
 
 ```ts
-rpc('report_period', { p_from: 'YYYY-MM-DD', p_to: 'YYYY-MM-DD', p_tz: 'Asia/Yangon' })
-→ PeriodReport
+reportPeriod(from: 'YYYY-MM-DD', to: 'YYYY-MM-DD'): Promise<PeriodReport>
 ```
 
 ```ts
 type PeriodReport = {
   from: string; to: string; tz: string
-  total_mmk: number; sale_count: number
-  per_day: { d: string; total_mmk: number; count: number }[]
-  per_staff: { staff_id: string; name: string; total_mmk: number; count: number }[]
+  totalMmk: number; saleCount: number
+  perDay: { d: string; totalMmk: number; count: number }[]
+  perStaff: { staffId: string; name: string; totalMmk: number; count: number }[]
 }
 ```
 
-- Only `status='completed'` sales.
-- Day buckets use `(created_at AT TIME ZONE p_tz)::date`; `per_day` covers every date in range (zeros included).
+- All locally stored sales in range (none are 'void' in MVP).
+- Day buckets use the shop timezone (`Asia/Yangon`, `Intl.DateTimeFormat`) against each sale's `createdAt`; `perDay` covers only days that actually have sales.
+- `from > to` or non-date input → `UNKNOWN` error.
 
-## sales_in_period
-
-```ts
-rpc('sales_in_period', { p_from, p_to, p_tz, p_limit: 25, p_offset: 0 })
-→ { id, created_at, total_mmk, completed_by, completed_by_name, item_count }[]
-```
-
-- Newest first; `p_limit` 1..100 else `INVALID_LIMIT`.
-
-## sale_detail
+## salesInPeriod
 
 ```ts
-rpc('sale_detail', { p_sale_id: uuid })
-→ SaleDetail
+salesInPeriod(from: 'YYYY-MM-DD', to: 'YYYY-MM-DD', page: number): Promise<SaleHeader[]>
 ```
 
-- Items read ONLY from `sale_items` snapshot columns (frozen history, FR-206).
+- Newest first; client-side pagination, 25 rows/page (`SALES_PAGE_SIZE`).
+
+## saleDetail
+
+```ts
+saleDetail(id: string): Promise<SaleDetail>
+```
+
+- Items read ONLY from the stored sale's snapshot fields (frozen history, FR-206). Unknown id → `UNKNOWN`.
 
 ## Errors → Burmese labels
-`FORBIDDEN` → `errCodeLabel('PERMISSION_DENIED')`; `INVALID_RANGE` / `INVALID_LIMIT` → generic retry copy; `NETWORK_ERROR` → existing copy.
+`UNKNOWN` → generic retry copy; `NETWORK_ERROR` copy reserved for the future backend path.
 
 ## Client query keys (persisted)
 - `['report', from, to, SHOP_TZ]`
@@ -50,4 +46,4 @@ rpc('sale_detail', { p_sale_id: uuid })
 - `['admin','sale', id]`
 - `['admin','products']`
 
-`SHOP_TZ = 'Asia/Yangon'` constant in `src/services/reportsService.ts`.
+`SHOP_TZ = 'Asia/Yangon'` constant in `src/hooks/usePeriod.ts`.

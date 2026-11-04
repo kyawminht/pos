@@ -5,22 +5,19 @@ import { createIndexedDbPersister } from './db/queryPersister'
 import { shouldPersistQueryKey } from './db/persistPolicy'
 import { theme } from './theme'
 import { router } from './router'
-import { startSync } from './services/syncService'
-import { useEffect } from 'react'
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       gcTime: 1000 * 60 * 60 * 24 * 7, // persist window
       retry: 2,
-      refetchOnWindowFocus: true,
-      refetchOnReconnect: true,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
     },
   },
 })
 
 export function App(): JSX.Element {
-  useEffect(() => startSync(), [])
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />

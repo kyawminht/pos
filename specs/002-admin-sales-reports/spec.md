@@ -4,21 +4,29 @@
 
 **Created**: 2026-11-02
 
-**Status**: Draft
+**Status**: Revision 2 (2026-11-04) — MVP pivot: reports aggregate local IndexedDB sales; admin area open on the trusted device until sign-in returns
 
 **Input**: User description: "Admin backend: mobile-first + desktop app in the same project folder, protected route, see daily/weekly/monthly sales, admin can add products. No stock view needed. Offline-cached reports where sensible. Tech: React TS SPA with TanStack Query + Material UI (per existing constitution)."
 
+> **MVP pivot note (2026-11-04)**: With the Supabase backend deferred (provider blocks
+> its endpoints — see spec 001), reports are computed from the device-local `sales`
+> store and product management writes the local `products` store. The admin-only
+> role gate (US1) is deferred with sign-in: on the shared shop tablet the admin
+> nav is simply visible. US1, the RLS guards, and the freshness semantics tied to
+> network fetches return with the backend revision. All other stories are unchanged
+> except that their data source is the local IndexedDB.
+
 ## User Scenarios & Testing *(mandatory)*
 
-### User Story 1 - Admin-only protected area (Priority: P1)
+### User Story 1 - Admin area (Priority: P1) *(deferred as a gate by MVP pivot)*
 
 A staff member with the admin role signs in and reaches the admin area; a sale-role staff member (or anyone not signed in) never sees it. Wrong role is redirected to the sales screen.
 
 **Why this priority**: Everything below sits behind this door; wrong-role access would expose business-wide revenue data.
 
-**Independent Test**: Can be fully tested by signing in as admin (dashboard loads) vs as sale staff (redirected to sales screen with no admin menu visible) vs signed-out (login screen).
+**MVP state**: the admin area is open on the trusted shared device (no sign-in exists yet). When the backend returns, this story is re-activated as the access gate.
 
-**Acceptance Scenarios**:
+**Deferred Acceptance Scenarios**:
 
 1. **Given** an admin is signed in, **When** they open the admin area, **Then** the sales dashboard loads.
 2. **Given** a sale-role staff is signed in, **When** they try to open the admin area (typed address, stale link), **Then** they are redirected to the sales screen and see no admin navigation.

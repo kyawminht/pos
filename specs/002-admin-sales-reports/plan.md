@@ -1,24 +1,24 @@
 # Implementation Plan: Admin Sales Reports & Product Management
 
-**Branch**: `002-admin-sales-reports` | **Date**: 2026-11-02 | **Spec**: [spec.md](./spec.md)
+**Branch**: `002-admin-sales-reports` | **Date**: 2026-11-02 | **Revised**: 2026-11-04 (MVP pivot) | **Spec**: [spec.md](./spec.md)
 
 **Input**: Feature specification from `/specs/002-admin-sales-reports/spec.md`
 
-## Summary
+## Summary *(revised by MVP pivot)*
 
-Add an admin-only area to the existing single SPA: a shared application shell with sidebar navigation (desktop) / bottom navigation (mobile), a reports workspace with daily/weekly/monthly totals derived from server-side SQL aggregates (timezone-corrected per day + per staff), drill-down into sale history with snapshot-frozen line items, and full product management (add / edit name·price·photo / deactivate–reactivate). Aggregates are cached in IndexedDB through the existing TanStack Query persister so past periods open offline with a freshness badge. All access is guarded both client-side (role gate) and server-side (RLS).
+Add an admin area to the existing single SPA: a shared application shell with sidebar navigation (desktop) / top-bar drawer (mobile), a reports workspace with daily/weekly/monthly totals derived from the **device-local sales store** (timezone-corrected per day + per staff), drill-down into sale history with snapshot-frozen line items, and full product management (add / edit name·price·photo / deactivate–reactivate). Aggregates are cached in IndexedDB through the existing TanStack Query persister. The role gate is deferred with sign-in (see spec pivot note); no cloud backend in the MVP.
 
 ## Technical Context
 
 **Language/Version**: TypeScript 5.5 / React 18 / Vite 5 (existing project — no new toolchain)
 
-**Primary Dependencies**: existing MUI 9, TanStack Query v5 (+ IndexedDB persister), Zustand, `@supabase/supabase-js` v2, react-router-dom
+**Primary Dependencies**: existing MUI 9, TanStack Query v5 (+ IndexedDB persister), Zustand, Capacitor 7 (Android build), react-router-dom — **no Supabase**
 
-**Storage**: Supabase Postgres for sales/products aggregation; IndexedDB only as a *view cache* of report responses (never the source of truth); no new storage buckets
+**Storage**: IndexedDB `sales` store is the source of truth for reports (aggregated in-app by `reportsService.ts`); IndexedDB `products` store for product management; kv store as the rendered-view cache. No network.
 
-**Testing**: Vitest + Testing Library (same harness); plus a `supabase/migrations/0002_*.sql` verification query in quickstart
+**Testing**: Vitest + Testing Library (same harness) + `fake-indexeddb`; report aggregation unit tests
 
-**Target Platform**: Existing PWA — phone-first, widened desktop layouts (`md`+); admin error-free on both
+**Target Platform**: Android via Capacitor (primary), PWA/browser fallback — phone-first, widened desktop layouts (`md`+)
 
 **Project Type**: Same single SPA; new `/admin/*` route subtree and a shared app shell
 
@@ -35,8 +35,8 @@ Add an admin-only area to the existing single SPA: a shared application shell wi
 | React 18 + TS + Vite | PASS | reuse existing scaffold |
 | TanStack Query for API/caching/offline | PASS | new query keys `['report',...]`, `['admin','products']`, `['admin','sales',...]` persisted via existing persister |
 | MUI only for UI | PASS | no new UI dependency; charts as styled bars |
-| Supabase SQL in `supabase/migrations/` | PASS | `0002_admin_reports.sql` (source `contracts/reports.sql`) |
-| Offline: past-period reports cached; today needs network + notice | PASS | query persistence + `dataUpdatedAt` freshness badge |
+| Supabase SQL migrations | **N/A (deferred)** | MVP pivot: aggregation moved client-side (`reportsService.ts` over the local sales store); `reports.sql` withdrawn |
+| Offline: reports always readable | PASS | data is local; `dataUpdatedAt` freshness badge still indicates recompute time |
 | All visible copy in Burmese via labels module | PASS | extend `labels.mm.ts` with admin keys |
 | MMK util everywhere | PASS | reuse `fmtMMK` |
 | Printer abstraction untouched | PASS | admin doesn't print in this scope |

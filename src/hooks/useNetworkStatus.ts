@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
 
 /**
- * navigator.onLine + window events, plus a lightweight Supabase HEAD ping
- * every 30s to catch hotspot-without-internet cases (research R11).
+ * navigator.onLine + window events, plus a lightweight local-asset HEAD ping
+ * every 30s to catch hotspot-without-internet cases.
+ *
+ * MVP note: nothing depends on connectivity — products and sales live in
+ * local IndexedDB. The status is surfaced only as a passive indicator.
  */
 export function useNetworkStatus(): { isOnline: boolean } {
   const [isOnline, setIsOnline] = useState(() => navigator.onLine)

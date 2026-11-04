@@ -1,18 +1,17 @@
 import { LABELS } from '../data/labels.mm'
-import type { Role } from '../types/domain'
 
 export interface NavItem {
   to: string
   label: string
-  roles?: Role[] // undefined = every signed-in role
 }
 
 export const NAV_ITEMS: NavItem[] = [
   { to: '/', label: LABELS.navSale },
-  { to: '/admin', label: LABELS.navReports, roles: ['admin'] },
-  { to: '/admin/products', label: LABELS.navProducts, roles: ['admin'] },
+  { to: '/admin', label: LABELS.navReports },
+  { to: '/admin/products', label: LABELS.navProducts },
 ]
 
-export function visibleNav(role: Role): NavItem[] {
-  return NAV_ITEMS.filter((item) => !item.roles || item.roles.includes(role))
+/** MVP: no auth — every nav item is visible on the shared device. */
+export function visibleNav(): NavItem[] {
+  return NAV_ITEMS
 }

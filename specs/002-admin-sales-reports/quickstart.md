@@ -1,30 +1,21 @@
-# Quickstart: validate Admin Sales Reports & Product Management
+# Quickstart: validate Admin Sales Reports & Product Management (MVP)
 
-Prereq: feature 001 applied (`0001_init.sql`) and app running; demo admin account seeded (`admin` / `demo-admin-1234`).
+Prereq: feature 001 app running (`npm run dev`). No backend — reports read the device-local sales store; make a few sales first so the dashboard has data.
 
-## 1. Apply the new migration
-Supabase Dashboard → SQL Editor → run `specs/002-admin-sales-reports/contracts/reports.sql` (or `supabase/migrations/0002_admin_reports.sql`).
-
-Sanity checks:
-```sql
-select public.is_admin(auth.uid());                -- true when signed in as admin
-select public.report_period(current_date, current_date);  -- returns totals jsonb with per_day/per_staff
-```
-
-## 2. Run
+## 1. Run
 ```bash
 npm run dev
 ```
-Sign in as `admin` → the shell shows the admin nav; sign in as `sale01` → admin nav hidden and `/admin` redirects to `/`.
+No sign-in in the MVP — the admin nav is visible on the shared device; open `/admin` directly.
 
-## 3. Acceptance walkthrough
+## 2. Acceptance walkthrough
 | # | Scenario | Expect |
 |---|---|---|
-| A1 | Admin opens `/admin` | dashboard, today tab selected |
+| A1 | Open `/admin` | dashboard, today tab selected |
 | A2 | Switch to week / month | totals + per-day bar rows update; Monday-start week |
-| A3 | Staff breakdown | each staff row with totals for period |
+| A3 | Staff breakdown | each seller row with totals for period (MVP: single "device" seller) |
 | A4 | Empty period (e.g. month before install) | zero totals + Burmese empty note, no errors |
-| A5 | Open history of a period | sales newest-first with date/amount/staff |
+| A5 | Open history of a period | sales newest-first with date/amount/seller |
 | A6 | Open one sale | items with snapshot names/prices; total matches |
 | A7 | Rename product, reopen old sale | old sale still shows the captured name/price |
 | A8 | Add product (name/price/photo) in admin | appears in admin list + staff catalog after refresh |
@@ -32,9 +23,9 @@ Sign in as `admin` → the shell shows the admin nav; sign in as `sale01` → ad
 | A10 | Deactivate product | disappears from staff screen after refresh; staff cart keeps it |
 | A11 | Re-activate | returns to staff catalog |
 | A12 | Invalid price (0 / text) | Burmese error blocks save |
-| A13 | DevTools offline, reopen yesterday/week | cached totals + "cached HH:MM" badge |
-| A14 | Offline, open today tab with no cache | Burmese offline notice, not stale numbers |
-| A15 | sale-role staff deep-links `/admin/reports` | redirected to sale screen; no admin content flashes |
+| A13 | Fully offline (no network at all) | everything still works — reports are computed locally |
+
+Deferred to the backend revision: sign-in/role gate (former A15) and server-side RLS.
 
 ## 4. Gates
 ```bash

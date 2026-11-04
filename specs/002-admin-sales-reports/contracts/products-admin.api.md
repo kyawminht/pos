@@ -13,10 +13,9 @@ updateProduct(id: string, patch: {
 }): Promise<Product>
 ```
 
-- Server path: RPC `admin_update_product(p_id, p_name, p_price_mmk, p_image_url, p_is_active)`
-  (admin OR the product's creator; see `contracts/reports.sql`).
+- Server path *deferred*: was RPC `admin_update_product`; **MVP**: direct IndexedDB `products` record patch (`productService.updateProduct`), single trusted device (no role check until sign-in returns).
 - Validation: non-empty name; integer price `1..9_999_999_999`; no-op patch allowed.
-- Errors: `NAME_REQUIRED`, `PRICE_INVALID`, `PERMISSION_DENIED`, `NETWORK_ERROR`.
+- Errors: `NAME_REQUIRED`, `PRICE_INVALID`; `PERMISSION_DENIED`/`NETWORK_ERROR` reserved for the backend path.
 
 ## setActive
 
@@ -27,7 +26,7 @@ setActive(id: string, isActive: boolean): Promise<Product>
 
 ## Photo replacement
 
-`uploadProductImage(file)` (existing compression pipeline from 001) → returns public URL → pass as `imageUrl` in the same `updateProduct` patch. `null` keeps the existing photo.
+`uploadProductImage(file)` (existing compression pipeline from 001) → returns an **inline compressed data URL** → pass as `imageUrl` in the same `updateProduct` patch. `null` keeps the existing photo.
 
 ## Behavior notes
 - Deactivating hides the product from the staff catalog (`is_active` filter) after the staff device's next refetch; current staff carts keep snapshots.

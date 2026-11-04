@@ -1,57 +1,20 @@
-# Contract: Sales API + Offline Sync (saleService / syncService)
+# Contract: Sales Service (local IndexedDB, consumed via saleService)
 
-## Types
-
-```ts
-type SaleItem = {
-  productId: string | null;      // null if product removed from catalog later
-  nameSnapshot: string;
-  imageSnapshot: string | null;
-  qty: number;                   // >= 1
-  unitPriceMmk: number;
-  lineTotalMmk: number;          // qty * unitPriceMmk
-};
-
-type Sale = {
-  idempotencyKey: string;        // client-gen uuid v4 — created BEFORE any confirm
-  totalMmk: number;              // sum(lineTotalMmk), validated server-side
-  completedBy: string;           // session userId
-  createdAt: string;             // device ISO time at confirm
-  items: SaleItem[];
-};
-
-type SaleReceipt = {
-  header: { shopName: string; saleTime: string; completedByName: string };
-  items: { name: string; qty: number; unitPriceMmk: number; lineTotalMmk: number }[];
-  totalMmk: number;
-};
-```
+*MVP pivot (2026-11-04): the former `create_sale` RPC contract is now a local write. Validation and idempotency semantics are preserved.*
 
 ## Operations
 
-| Signature | Mode | Behavior |
-|---|---|---|
-| `confirmSale(order): Promise<{saleId, offline: boolean}>` | both | online → RPC `create_sale(p_sale, p_items)`; offline → enqueue to IndexedDB, return `{offline:true}` |
-| `flushQueue(): Promise<number>` | online | drains pending records (oldest first); per-record RPC call; on success mark done; on failure attempts++ and re-enqueue |
-| `getPendingCount(): Promise<number>` | any | count of `state in ('pending','failed')` |
-| `buildReceipt(order, profile): SaleReceipt` | any | pure; shared by WebPrintService and future BluetoothPrinterService |
+| Function | Contract |
+|---|---|
+| `confirmSale(sale): Promise<{saleId, offline}>` | validates then **writes the sale immediately to IndexedDB `sales`** as a final record; returns `{saleId: idempotencyKey, offline: false}` (offline kept in the return shape for the future sync path) |
+| `putSale(sale)` | single-sale write; errors: `EMPTY_SALE` (no items), `TOTAL_MISMATCH` (recomputed Σ lineTotalMmk ≠ totalMmk) |
+| `getSale(idempotencyKey)` / `sumSales(fromIso, toIso)` | local reads for tests/admin |
+| `countPending` etc. | **removed with the MVP sync queue**; `createSaleOnline`/`flushQueue` return with the deferred cloud backend |
 
-## `create_sale` RPC contract (server, see schema.sql)
+## Record shape (see data-model.md)
+- Key: `idempotencyKey` (uuid, client-generated) — a retried confirm overwrites the same key, so a sale can never be recorded twice (was: server-side rpc duplicate resolution).
+- Append-only: confirmed sales are never modified or deleted in MVP.
+- Snapshots (`nameSnapshot`, `imageSnapshot`, `unitPriceMmk`) freeze at confirm time.
 
-Request body: `{ p_sale: {...}, p_items: [...] }` (jsonb as in data-model).
-Response: `{ "sale_id": ..., "duplicate": false|true, "total_mmk": n }`.
-
-Server rules (client MUST NOT repeat these):
-1. `completed_by` must equal `auth.uid()` → else FORBIDDEN
-2. recomputed item-sum must equal `p_sale.total_mmk` → else TOTAL_MISMATCH
-3. zero items → EMPTY_SALE
-4. existing `idempotency_key` → returns original sale (`duplicate:true`), client marks record done
-
-## Sync rules
-- Flush triggers: `online` event, app start, 30s interval while pending>0, after manual retry.
-- Backoff: 5s, 15s, 60s (attempts ≤5 → state `failed`, still retried next flush cycle).
-- Exactly-once: server idempotency on `(idempotency_key)` guarantees duplicates are impossible even across devices/reinstalls.
-- Local record retention: `done` records purged after 7 days; `failed` kept until manually cleared (admins later).
-
-## Total-display rule (UI contract)
-Totals shown anywhere in the app MUST use `fmtMMK` (see data-model R6): integer + thousands separator + ` ကျပ်`. Receipt and summary show the same string.
+## Timezone
+- Sale `createdAt` is a client ISO timestamp; report day-bucketing uses `Asia/Yangon` (contracts with reportsService).

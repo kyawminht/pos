@@ -10,14 +10,14 @@ import { reportKey, reportPeriod } from '../services/reportsService'
 import { PeriodTabs } from '../components/PeriodTabs'
 import { BarBreakdown } from '../components/BarBreakdown'
 import { FreshnessBadge } from '../components/FreshnessBadge'
-import { useSyncQueue } from '../hooks/useSyncQueue'
+import { useNetworkStatus } from '../hooks/useNetworkStatus'
 import type { PeriodKey } from '../types/domain'
 import type { JSX } from 'react'
 
 export function AdminDashboardPage(): JSX.Element {
   const [period, setPeriod] = useState<PeriodKey>('day')
   const navigate = useNavigate()
-  const { isOnline, pendingCount } = useSyncQueue()
+  const { isOnline } = useNetworkStatus()
   const range = useMemo(() => rangeFor(period), [period])
 
   const { data, isPending, isError, refetch, dataUpdatedAt } = useQuery({
@@ -63,11 +63,6 @@ export function AdminDashboardPage(): JSX.Element {
       {isError && isOnline && (
         <Alert severity="error" sx={{ mb: 3 }}>
           {LABELS.errCodeLabel('NETWORK_ERROR')}
-        </Alert>
-      )}
-      {pendingCount > 0 && (
-        <Alert severity="info" sx={{ mb: 3 }}>
-          {LABELS.pendingThisDevice(pendingCount)}
         </Alert>
       )}
 

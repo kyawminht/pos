@@ -1,78 +1,42 @@
-import { supabase } from './supabaseClient'
-import type { Sale, SaleItem } from '../types/domain'
-import { enqueue, peekNext, markSyncing, updateState, countPending } from '../db/queueAdapter'
+import type { Sale } from '../types/domain'
+import { saleStore } from '../db/offlineStore'
 
 type ServiceError = { code: string }
 export const err = (code: string): ServiceError => ({ code })
 
-/** Idempotent, atomic sale insert (contracts/sales.api.md). */
-export async function createSaleOnline(sale: Sale, items: SaleItem[]): Promise<string> {
-  const { data, error } = await supabase.rpc('create_sale', {
-    p_sale: {
-      idempotency_key: sale.idempotencyKey,
-      total_mmk: sale.totalMmk,
-      completed_by: sale.completedBy,
-      created_at: sale.createdAt,
-    },
-    p_items: items.map((i) => ({
-      product_id: i.productId,
-      product_name_snapshot: i.nameSnapshot,
-      image_url_snapshot: i.imageSnapshot,
-      qty: i.qty,
-      unit_price_mmk: i.unitPriceMmk,
-      line_total_mmk: i.lineTotalMmk,
-    })),
-  })
-  if (error) {
-    if (/TOTAL_MISMATCH/.test(error.message)) throw err('TOTAL_MISMATCH')
-    if (/EMPTY_SALE/.test(error.message)) throw err('EMPTY_SALE')
-    throw err('NETWORK_ERROR')
-  }
-  return data.sale_id
+/**
+ * MVP storage model (contracts/sales.api.md): every confirmed sale is written
+ * straight to the local IndexedDB `sales` store. The idempotency key is the
+ * record key, so retrying the same sale can never create a duplicate.
+ */
+
+/** Atomic local insert of a complete sale. Returns the stored sale key. */
+export async function putSale(sale: Sale): Promise<string> {
+  if (!sale.items.length) throw err('EMPTY_SALE')
+  const recomputed = sale.items.reduce((n, i) => n + i.lineTotalMmk, 0)
+  if (recomputed !== sale.totalMmk) throw err('TOTAL_MISMATCH')
+  await saleStore.put(sale)
+  return sale.idempotencyKey
 }
 
-/** confirmSale: online direct, offline enqueue. Returns offline flag (US4). */
-export async function confirmSale(sale: Sale, isOnline: boolean): Promise<{ saleId: string | null; offline: boolean }> {
-  if (!isOnline) {
-    // Enqueue with idempotency — duplicate capture guarded in queueAdapter
-    await enqueue(sale, sale.idempotencyKey)
-    return { saleId: null, offline: true }
-  }
-  try {
-    const saleId = await createSaleOnline(sale, sale.items)
-    return { saleId, offline: false }
-  } catch (e) {
-    const code = (e as ServiceError).code
-    if (code === 'NETWORK_ERROR' || code === undefined) {
-      // Unknown/raw network-style errors are retryable → offline queue
-      await enqueue(sale, sale.idempotencyKey)
-      return { saleId: null, offline: true }
-    }
-    throw e
-  }
+/**
+ * confirmSale: saves the sale locally and finalizes it immediately.
+ * Kept returning `{ saleId, offline }` shape to match the order flow contract;
+ * in the MVP there is no cloud push, so `offline` is always false.
+ */
+export async function confirmSale(sale: Sale): Promise<{ saleId: string | null; offline: boolean }> {
+  const saleId = await putSale(sale)
+  return { saleId, offline: false }
 }
 
-/** Flush the offline queue (US6): oldest-first, one RPC per record, where dup = done. */
-export async function flushQueue(): Promise<{ flushed: number; failed: number }> {
-  let flushed = 0
-  let failed = 0
-  while (true) {
-    const rec = await peekNext()
-    if (!rec) break
-    await markSyncing(rec.idempotencyKey)
-    try {
-      await createSaleOnline(rec.payload, rec.payload.items)
-      await updateState(rec.idempotencyKey, 'done')
-      flushed++
-    } catch (e) {
-      const code = (e as ServiceError).code
-      failed++
-      // retryable → back to 'pending' (updateState escalates to 'failed' after RETRY_LIMIT)
-      await updateState(rec.idempotencyKey, 'pending', code)
-      break
-    }
-  }
-  return { flushed, failed }
+/** Total across all locally stored sales between two ISO dates (inclusive). */
+export async function sumSales(fromIso: string, toIso: string): Promise<number> {
+  const all = await saleStore.all()
+  return all
+    .filter((s) => s.createdAt >= fromIso && s.createdAt <= toIso)
+    .reduce((n, s) => n + s.totalMmk, 0)
 }
 
-export { countPending }
+export async function getSale(idempotencyKey: string): Promise<Sale | undefined> {
+  return saleStore.get(idempotencyKey)
+}

@@ -1,5 +1,6 @@
-import { supabase } from './supabaseClient'
-import type { Product, ProductRow } from '../types/domain'
+import type { Product } from '../types/domain'
+import { productStore } from '../db/offlineStore'
+import { fileToDataUrl } from './imageDataService'
 
 export interface SearchableProduct {
   id: string
@@ -11,28 +12,15 @@ export interface SearchableProduct {
 type ServiceError = { code: string }
 export const err = (code: string): ServiceError => ({ code })
 
-function rowToProduct(r: ProductRow): Product {
-  return {
-    id: r.id,
-    name: r.name,
-    priceMmk: r.price_mmk,
-    imageUrl: r.image_url,
-    isActive: r.is_active,
-    createdBy: r.created_by,
-    createdAt: r.created_at,
-    updatedAt: r.updated_at,
-  }
-}
+/**
+ * All product data lives in the local IndexedDB `products` store — the whole
+ * app is offline-first; there is no cloud backend in the MVP.
+ */
 
-/** listActive (contracts/products.api.md) */
+/** listActive: active products, newest-updated first. */
 export async function listActive(): Promise<Product[]> {
-  const { data, error } = await supabase
-    .from('products')
-    .select('*')
-    .eq('is_active', true)
-    .order('updated_at', { ascending: false })
-  if (error) throw err('NETWORK_ERROR')
-  return (data ?? []).map(rowToProduct)
+  const all = await productStore.all()
+  return all.filter((p) => p.isActive).sort(byUpdatedDesc)
 }
 
 // ---------------------------------------------------------------------------
@@ -66,38 +54,40 @@ export function searchLocal(products: SearchableProduct[], query: string): Searc
 }
 
 // ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
 // Update price (easy price change for sale staff/admin)
 // ---------------------------------------------------------------------------
 
 export async function updateProductPrice(id: string, priceMmk: number): Promise<void> {
   if (!Number.isInteger(priceMmk) || priceMmk < 1) throw err('PRICE_INVALID')
-  const { error } = await supabase.from('products').update({ price_mmk: priceMmk }).eq('id', id)
-  if (error) throw err('PERMISSION_DENIED')
+  const existing = await productStore.get(id)
+  if (!existing) throw err('UNKNOWN')
+  await productStore.put({ ...existing, priceMmk, updatedAt: new Date().toISOString() })
 }
 
 // ---------------------------------------------------------------------------
-// Image upload (Supabase Storage bucket `products`; DB stores URL text only)
+// Images: stored as compressed data URLs directly on the product record
 // ---------------------------------------------------------------------------
 
 export async function uploadProductImage(file: File): Promise<string | null> {
   if (!file) return null
-  const path = `products/${globalThis.crypto.randomUUID()}.jpg`
-  const { error } = await supabase.storage
-    .from('products')
-    .upload(path, file, { contentType: 'image/jpeg', upsert: false })
-  if (error) throw err('IMAGE_UNREADABLE')
-  return supabase.storage.from('products').getPublicUrl(path).data.publicUrl
+  try {
+    return await fileToDataUrl(file)
+  } catch {
+    throw err('IMAGE_UNREADABLE')
+  }
 }
 
 // ---------------------------------------------------------------------------
-// Admin: list all (incl. inactive), update, activate/deactivate
+// Admin: list all (incl. inactive), update, activate/deactivate, create
 // ---------------------------------------------------------------------------
 
 export async function listAllProducts(): Promise<Product[]> {
-  const { data, error } = await supabase.from('products').select('*').order('updated_at', { ascending: false })
-  if (error) throw err('NETWORK_ERROR')
-  return (data ?? []).map(rowToProduct)
+  const all = await productStore.all()
+  return all.sort(byUpdatedDesc)
+}
+
+function byUpdatedDesc(a: Product, b: Product): number {
+  return b.updatedAt.localeCompare(a.updatedAt)
 }
 
 export interface ProductPatch {
@@ -112,31 +102,18 @@ export async function updateProduct(id: string, patch: ProductPatch): Promise<Pr
   if (patch.priceMmk !== undefined && (!Number.isInteger(patch.priceMmk) || patch.priceMmk < 1 || patch.priceMmk > 9_999_999_999)) {
     throw err('PRICE_INVALID')
   }
-
-  const { data, error } = await supabase.rpc('admin_update_product', {
-    p_id: id,
-    p_name: patch.name ?? null,
-    p_price_mmk: patch.priceMmk ?? null,
-    p_image_url: patch.imageUrl ?? null,
-    p_is_active: patch.isActive ?? null,
-  })
-  if (error) {
-    if (/NAME_REQUIRED/.test(error.message)) throw err('NAME_REQUIRED')
-    if (/PRICE_INVALID/.test(error.message)) throw err('PRICE_INVALID')
-    if (/FORBIDDEN/.test(error.message)) throw err('PERMISSION_DENIED')
-    throw err('NETWORK_ERROR')
-  }
-  const r = data as { id: string; name: string; price_mmk: number; image_url: string | null; is_active: boolean }
-  return {
-    id: r.id,
-    name: r.name,
-    priceMmk: Number(r.price_mmk),
-    imageUrl: r.image_url,
-    isActive: r.is_active,
-    createdBy: null,
-    createdAt: '',
+  const existing = await productStore.get(id)
+  if (!existing) throw err('UNKNOWN')
+  const updated: Product = {
+    ...existing,
+    name: patch.name !== undefined ? patch.name.trim() : existing.name,
+    priceMmk: patch.priceMmk !== undefined ? patch.priceMmk : existing.priceMmk,
+    imageUrl: patch.imageUrl !== undefined ? patch.imageUrl : existing.imageUrl,
+    isActive: patch.isActive !== undefined ? patch.isActive : existing.isActive,
     updatedAt: new Date().toISOString(),
   }
+  await productStore.put(updated)
+  return updated
 }
 
 export async function setActive(id: string, isActive: boolean): Promise<Product> {
@@ -161,16 +138,17 @@ export async function createProduct(input: {
     imageUrl = await uploadProductImage(input.imageFile)
   }
 
-  const { data, error } = await supabase
-    .from('products')
-    .insert({
-      name,
-      price_mmk: input.priceMmk,
-      image_url: imageUrl,
-      created_by: input.createdBy ?? null,
-    })
-    .select('*')
-    .single()
-  if (error) throw err('NETWORK_ERROR')
-  return rowToProduct(data)
+  const now = new Date().toISOString()
+  const product: Product = {
+    id: globalThis.crypto.randomUUID(),
+    name,
+    priceMmk: input.priceMmk,
+    imageUrl,
+    isActive: true,
+    createdBy: input.createdBy ?? null,
+    createdAt: now,
+    updatedAt: now,
+  }
+  await productStore.put(product)
+  return product
 }
